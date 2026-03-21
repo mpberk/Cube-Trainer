@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CubeTrainer — OLL & PLL Mastery</title>
+  <meta name="description" content="Speedcubing OLL and PLL algorithm trainer">
+  <meta name="theme-color" content="#060810">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #060810; overflow-x: hidden; }
+    #root { min-height: 100vh; }
+  </style>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect } = React;
+
+// ─── OLL Pattern Helpers ─────────────────────────────────────────────────────
+// Each OLL pattern is stored as a 21-char string of Y/G:
+//   positions 0-8: U face (top-down, reading order)
+//   positions 9-11: F strip (L→R)
+//   positions 12-14: B strip (L→R in top-down view)
+//   positions 15-17: L strip (back→front)
+//   positions 18-20: R strip (back→front)
+// Center (position 4) is always yellow.
+
+const BLANK_PATTERN = “GGGGYGGGGGGGGGGGGGGGG”;
+
+function patternToData(pat) {
+const s = pat || BLANK_PATTERN;
+return {
+top: s.slice(0,9).split(’’),
+sides: {
+F: s.slice(9,12).split(’’),
+B: s.slice(12,15).split(’’),
+L: s.slice(15,18).split(’’),
+R: s.slice(18,21).split(’’),
+},
+};
+}
+
+function dataToPattern(data) {
+return data.top.join(’’) + data.sides.F.join(’’) + data.sides.B.join(’’) + data.sides.L.join(’’) + data.sides.R.join(’’);
+}
+
+function validatePattern(pat) {
+const d = patternToData(pat);
+const all = […d.top, …d.sides.F, …d.sides.B, …d.sides.L, …d.sides.R];
+const total = all.filter(v => v === “Y”).length;
+const edges = [
+[d.top[1], d.sides.B[1]],
+[d.top[3], d.sides.L[1]],
+[d.top[5], d.sides.R[1]],
+[d.top[7], d.sides.F[1]],
+];
+const corners = [
+[d.top[0], d.sides.B[0], d.sides.L[0]],
+[d.top[2], d.sides.B[2], d.sides.R[0]],
+[d.top[6], d.sides.F[0], d.sides.L[2]],
+[d.top[8], d.sides.F[2], d.sides.R[2]],
+];
+const edgesOk = edges.every(e => e.filter(v => v===“Y”).length === 1);
+const cornersOk = corners.every(c => c.filter(v => v===“Y”).length === 1);
+return { total, edgesOk, cornersOk, valid: total === 9 && edgesOk && cornersOk };
+}
+
+// PLL arrow definitions: array of {from, to} using position names
+// Positions: corners TL,TR,BL,BR  edges TC,ML,MR,BC
+// We’ll draw arrows on a top-down cube view
+const PLL_DATA = [
+{ id:“PLL_Ua”,  arrows:[{from:“ML”,to:“TC”},{from:“TC”,to:“MR”},{from:“MR”,to:“ML”}], cornerSwaps:[] },
+{ id:“PLL_Ub”,  arrows:[{from:“TC”,to:“ML”},{from:“ML”,to:“MR”},{from:“MR”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Z”,   arrows:[{from:“TC”,to:“MR”},{from:“MR”,to:“TC”},{from:“ML”,to:“BC”},{from:“BC”,to:“ML”}], cornerSwaps:[] },
+{ id:“PLL_H”,   arrows:[{from:“TC”,to:“BC”},{from:“BC”,to:“TC”},{from:“ML”,to:“MR”},{from:“MR”,to:“ML”}], cornerSwaps:[] },
+{ id:“PLL_Aa”,  arrows:[{from:“TL”,to:“BL”},{from:“BL”,to:“BR”},{from:“BR”,to:“TL”}], cornerSwaps:[] },
+{ id:“PLL_Ab”,  arrows:[{from:“TL”,to:“BR”},{from:“BR”,to:“BL”},{from:“BL”,to:“TL”}], cornerSwaps:[] },
+{ id:“PLL_E”,   arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“TL”},{from:“BL”,to:“BR”},{from:“BR”,to:“BL”}], cornerSwaps:[] },
+{ id:“PLL_Ra”,  arrows:[{from:“TR”,to:“TL”},{from:“TL”,to:“BL”},{from:“BL”,to:“TR”},{from:“TC”,to:“ML”},{from:“ML”,to:“BC”},{from:“BC”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Rb”,  arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“BR”},{from:“BR”,to:“TL”},{from:“TC”,to:“MR”},{from:“MR”,to:“BC”},{from:“BC”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Ja”,  arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“TL”},{from:“TC”,to:“MR”},{from:“MR”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Jb”,  arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“TL”},{from:“TC”,to:“ML”},{from:“ML”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_T”,   arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“TL”},{from:“ML”,to:“MR”},{from:“MR”,to:“ML”}], cornerSwaps:[] },
+{ id:“PLL_F”,   arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“TL”},{from:“TC”,to:“MR”},{from:“MR”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_V”,   arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“TL”},{from:“TC”,to:“MR”},{from:“MR”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Y”,   arrows:[{from:“TL”,to:“BR”},{from:“BR”,to:“TR”},{from:“TR”,to:“TL”},{from:“TC”,to:“MR”},{from:“MR”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Na”,  arrows:[{from:“TL”,to:“BR”},{from:“BR”,to:“TL”},{from:“TR”,to:“BL”},{from:“BL”,to:“TR”}], cornerSwaps:[] },
+{ id:“PLL_Nb”,  arrows:[{from:“TL”,to:“BR”},{from:“BR”,to:“TL”},{from:“TR”,to:“BL”},{from:“BL”,to:“TR”}], cornerSwaps:[] },
+{ id:“PLL_Ga”,  arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“BR”},{from:“BR”,to:“TL”},{from:“TC”,to:“MR”},{from:“MR”,to:“BC”},{from:“BC”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Gb”,  arrows:[{from:“TL”,to:“BR”},{from:“BR”,to:“TR”},{from:“TR”,to:“TL”},{from:“TC”,to:“BC”},{from:“BC”,to:“ML”},{from:“ML”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Gc”,  arrows:[{from:“TL”,to:“TR”},{from:“TR”,to:“BR”},{from:“BR”,to:“TL”},{from:“TC”,to:“BC”},{from:“BC”,to:“ML”},{from:“ML”,to:“TC”}], cornerSwaps:[] },
+{ id:“PLL_Gd”,  arrows:[{from:“TL”,to:“BL”},{from:“BL”,to:“BR”},{from:“BR”,to:“TL”},{from:“ML”,to:“BC”},{from:“BC”,to:“MR”},{from:“MR”,to:“ML”}], cornerSwaps:[] },
+];
+
+const PLL_MAP = Object.fromEntries(PLL_DATA.map(p => [p.id, p]));
+
+// ─── SVG OLL Diagram ─────────────────────────────────────────────────────────
+const CELL = 18;
+const GAP = 2;
+const SIDE_H = 10;
+const PAD = 6;
+
+function OLLDiagram({ data, size = 120, onToggle }) {
+if (!data) return <FallbackDiagram label="?" size={size} />;
+
+const gridW = 3 * CELL + 2 * GAP;
+const totalW = gridW + 2 * PAD + 2 * SIDE_H;
+const totalH = gridW + 2 * PAD + 2 * SIDE_H;
+
+const offsetX = PAD + SIDE_H;
+const offsetY = PAD + SIDE_H;
+
+const cellX = (col) => offsetX + col * (CELL + GAP);
+const cellY = (row) => offsetY + row * (CELL + GAP);
+
+const fillColor = (v) => v === “Y” ? “#facc15” : “#374151”;
+const borderColor = (v) => v === “Y” ? “#ca8a04” : “#1f2937”;
+
+const handleClick = (idx) => { if (onToggle && idx !== 4) onToggle(idx); };
+const cursor = onToggle ? “pointer” : “default”;
+
+return (
+<svg width={size} height={size} viewBox={`0 0 ${totalW} ${totalH}`} style={{ display: “block” }}>
+<rect width={totalW} height={totalH} fill="#0f172a" rx="6" />
+{/* Top face 3x3 */}
+{data.top.map((v, i) => {
+const col = i % 3;
+const row = Math.floor(i / 3);
+return (
+<rect key={i} x={cellX(col)} y={cellY(row)} width={CELL} height={CELL}
+fill={fillColor(v)} stroke={borderColor(v)} strokeWidth=“0.8” rx=“2”
+style={{ cursor: i === 4 ? “default” : cursor }} onClick={() => handleClick(i)} />
+);
+})}
+{/* Front strip (bottom) */}
+{data.sides.F && data.sides.F.map((v, i) => (
+<rect key={`F${i}`} x={cellX(i)} y={offsetY + gridW + GAP} width={CELL} height={SIDE_H}
+fill={fillColor(v)} stroke={borderColor(v)} strokeWidth=“0.8” rx=“1.5”
+style={{ cursor }} onClick={() => handleClick(9 + i)} />
+))}
+{/* Back strip (top) */}
+{data.sides.B && data.sides.B.map((v, i) => (
+<rect key={`B${i}`} x={cellX(i)} y={PAD} width={CELL} height={SIDE_H}
+fill={fillColor(v)} stroke={borderColor(v)} strokeWidth=“0.8” rx=“1.5”
+style={{ cursor }} onClick={() => handleClick(12 + i)} />
+))}
+{/* Left strip */}
+{data.sides.L && data.sides.L.map((v, i) => (
+<rect key={`L${i}`} x={PAD} y={cellY(i)} width={SIDE_H} height={CELL}
+fill={fillColor(v)} stroke={borderColor(v)} strokeWidth=“0.8” rx=“1.5”
+style={{ cursor }} onClick={() => handleClick(15 + i)} />
+))}
+{/* Right strip */}
+{data.sides.R && data.sides.R.map((v, i) => (
+<rect key={`R${i}`} x={offsetX + gridW + GAP} y={cellY(i)} width={SIDE_H} height={CELL}
+fill={fillColor(v)} stroke={borderColor(v)} strokeWidth=“0.8” rx=“1.5”
+style={{ cursor }} onClick={() => handleClick(18 + i)} />
+))}
+{/* Centre dot */}
+<circle cx={offsetX + CELL + GAP + CELL / 2} cy={offsetY + CELL + GAP + CELL / 2} r=“2.5” fill=”#a78bfa” opacity=“0.8” />
+</svg>
+);
+}
+
+// ─── SVG PLL Diagram ─────────────────────────────────────────────────────────
+const POS = {
+TL:  { x: 14, y: 14 },
+TC:  { x: 60, y: 8  },
+TR:  { x: 106, y: 14 },
+ML:  { x: 8,  y: 60 },
+MR:  { x: 112, y: 60 },
+BL:  { x: 14, y: 106 },
+BC:  { x: 60, y: 112 },
+BR:  { x: 106, y: 106 },
+};
+
+function arrowPath(from, to) {
+const f = POS[from], t = POS[to];
+if (!f || !t) return null;
+const dx = t.x - f.x, dy = t.y - f.y;
+const len = Math.sqrt(dx * dx + dy * dy);
+const ux = dx / len, uy = dy / len;
+const sx = f.x + ux * 10, sy = f.y + uy * 10;
+const ex = t.x - ux * 10, ey = t.y - uy * 10;
+// Slight curve
+const mx = (sx + ex) / 2 - uy * 12;
+const my = (sy + ey) / 2 + ux * 12;
+return `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}`;
+}
+
+function PLLDiagram({ id, size = 120 }) {
+const data = PLL_MAP[id];
+if (!data) return <FallbackDiagram label={id} size={size} />;
+
+const V = 120;
+const CUBEPAD = 22;
+const CS = (V - 2 * CUBEPAD) / 3;
+
+const cornerPositions = [
+{ key: “TL”, cx: CUBEPAD, cy: CUBEPAD },
+{ key: “TR”, cx: CUBEPAD + CS * 2, cy: CUBEPAD },
+{ key: “BL”, cx: CUBEPAD, cy: CUBEPAD + CS * 2 },
+{ key: “BR”, cx: CUBEPAD + CS * 2, cy: CUBEPAD + CS * 2 },
+];
+
+const arrowColors = [”#f472b6”,”#38bdf8”,”#34d399”,”#fb923c”,”#a78bfa”,”#fbbf24”];
+
+return (
+<svg width={size} height={size} viewBox={`0 0 ${V} ${V}`} style={{ display: “block” }}>
+<defs>
+{arrowColors.map((c, i) => (
+<marker key={i} id={`ah-${id}-${i}`} markerWidth=“6” markerHeight=“6”
+refX=“5” refY=“3” orient=“auto”>
+<path d="M0,0 L6,3 L0,6 Z" fill={c} />
+</marker>
+))}
+</defs>
+{/* Background */}
+<rect width={V} height={V} fill="#0f172a" rx="6" />
+{/* Cube face grid */}
+{[0,1,2].map(row => [0,1,2].map(col => (
+<rect key={`${row}-${col}`}
+x={CUBEPAD + col * CS} y={CUBEPAD + row * CS}
+width={CS} height={CS}
+fill=“rgba(255,255,255,0.05)”
+stroke=“rgba(255,255,255,0.15)” strokeWidth=“0.8”
+/>
+)))}
+{/* Corner squares */}
+{cornerPositions.map(({ key, cx, cy }) => (
+<rect key={key} x={cx} y={cy} width={CS} height={CS}
+fill="rgba(167,139,250,0.15)" stroke="#a78bfa" strokeWidth="1.2" rx="2" />
+))}
+{/* Arrows */}
+{data.arrows.map((arr, i) => {
+const p = arrowPath(arr.from, arr.to);
+if (!p) return null;
+const col = arrowColors[i % arrowColors.length];
+return (
+<path key={i} d={p} fill=“none” stroke={col} strokeWidth=“1.8”
+strokeLinecap=“round”
+markerEnd={`url(#ah-${id}-${i})`} opacity=“0.9” />
+);
+})}
+</svg>
+);
+}
+
+function FallbackDiagram({ label, size }) {
+return (
+<svg width={size} height={size} viewBox="0 0 120 120">
+<rect width="120" height="120" fill="#0f172a" rx="6" />
+<text x="60" y="66" textAnchor="middle" fill="#475569" fontSize="11" fontFamily="monospace">{label}</text>
+</svg>
+);
+}
+
+// ─── Algorithm data ──────────────────────────────────────────────────────────
+const OLL_ALGS = [
+{ id:“OLL1”,  name:“OLL 1”,   group:“Dot”,          alg:“R U2 R2 F R F’ U2 R’ F R F’”,            desc:“Dot – no edges or corners oriented” },
+{ id:“OLL2”,  name:“OLL 2”,   group:“Dot”,          alg:“F R U R’ U’ F’ f R U R’ U’ f’”,          desc:“Dot variant” },
+{ id:“OLL3”,  name:“OLL 3”,   group:“2 Edges”,      alg:“f U R U’ R’ f’ U’ F R U R’ U’ F’”,       desc:“2 edges – small L” },
+{ id:“OLL4”,  name:“OLL 4”,   group:“2 Edges”,      alg:“f R U R’ U’ f’ U F R U R’ U’ F’”,        desc:“2 edges – small L mirror” },
+{ id:“OLL5”,  name:“OLL 5”,   group:“Square”,       alg:“r’ U2 R U R’ U r”,                       desc:“Square shape” },
+{ id:“OLL6”,  name:“OLL 6”,   group:“Square”,       alg:“r U2 R’ U’ R U’ r’”,                     desc:“Square mirror” },
+{ id:“OLL7”,  name:“OLL 7”,   group:“Small L”,      alg:“r U R’ U R U2 r’”,                       desc:“Small L” },
+{ id:“OLL8”,  name:“OLL 8”,   group:“Small L”,      alg:“r’ U’ R U’ R’ U2 r”,                     desc:“Small L mirror” },
+{ id:“OLL9”,  name:“OLL 9”,   group:“Fish”,         alg:“R U R’ U’ R’ F R2 U R’ U’ F’”,           desc:“Fish shape” },
+{ id:“OLL10”, name:“OLL 10”,  group:“Fish”,         alg:“R U R’ U R’ F R F’ R U2 R’”,             desc:“Fish variant” },
+{ id:“OLL11”, name:“OLL 11”,  group:“Small L”,      alg:“r’ R2 U R’ U R U2 R’ U M’”,              desc:“Small L 2” },
+{ id:“OLL12”, name:“OLL 12”,  group:“Small L”,      alg:“M’ R’ U’ R U’ R’ U2 R U’ M”,             desc:“Small L mirror 2” },
+{ id:“OLL13”, name:“OLL 13”,  group:“Knight Move”,  alg:“F U R U’ R2 F’ R U R U’ R’”,             desc:“Knight move” },
+{ id:“OLL14”, name:“OLL 14”,  group:“Knight Move”,  alg:“R’ F R U R’ F’ R F U’ F’”,               desc:“Knight move mirror” },
+{ id:“OLL15”, name:“OLL 15”,  group:“Knight Move”,  alg:“r’ U’ r R’ U’ R U r’ U r”,               desc:“Knight move 2” },
+{ id:“OLL16”, name:“OLL 16”,  group:“Knight Move”,  alg:“r U r’ R U R’ U’ r U’ r’”,               desc:“Knight move mirror 2” },
+{ id:“OLL17”, name:“OLL 17”,  group:“Dot”,          alg:“F R’ F’ R2 r’ U R U’ R’ U’ M’”,          desc:“Dot 3” },
+{ id:“OLL18”, name:“OLL 18”,  group:“Dot”,          alg:“r U R’ U R U2 r2 U’ R U’ R’ U2 r”,       desc:“Dot 4” },
+{ id:“OLL19”, name:“OLL 19”,  group:“Dot”,          alg:“r’ R U R U R’ U’ M’ R’ F R F’”,          desc:“Dot 5” },
+{ id:“OLL20”, name:“OLL 20”,  group:“Dot”,          alg:“r U R’ U’ M2 U R U’ R’ U’ M’”,           desc:“Dot 6 – all edges, 2 corners” },
+{ id:“OLL21”, name:“OLL 21”,  group:“Cross”,        alg:“R U2 R’ U’ R U R’ U’ R U’ R’”,           desc:“Cross – 2 bad corners diagonal” },
+{ id:“OLL22”, name:“OLL 22”,  group:“Cross”,        alg:“R U2 R2 U’ R2 U’ R2 U2 R”,               desc:“Cross – all corners twisted” },
+{ id:“OLL23”, name:“OLL 23”,  group:“Cross”,        alg:“R2 D’ R U2 R’ D R U2 R”,                 desc:“Cross – all yellow!” },
+{ id:“OLL24”, name:“OLL 24”,  group:“Cross”,        alg:“r U R’ U’ r’ F R F’”,                    desc:“Cross – L shape corners” },
+{ id:“OLL25”, name:“OLL 25”,  group:“Cross”,        alg:“F’ r U R’ U’ r’ F R”,                    desc:“Cross – L mirror” },
+{ id:“OLL26”, name:“OLL 26”,  group:“Sune”,         alg:“R U2 R’ U’ R U’ R’”,                     desc:“Sune” },
+{ id:“OLL27”, name:“OLL 27”,  group:“Sune”,         alg:“R U R’ U R U2 R’”,                       desc:“Anti-Sune” },
+{ id:“OLL28”, name:“OLL 28”,  group:“Arrow”,        alg:“r U R’ U’ M U R U’ R’”,                  desc:“Arrow” },
+{ id:“OLL29”, name:“OLL 29”,  group:“P”,            alg:“R U R’ U’ R U’ R’ F’ U’ F R U R’”,       desc:“P shape” },
+{ id:“OLL30”, name:“OLL 30”,  group:“P”,            alg:“F R’ F R2 U’ R’ U’ R U R’ F2”,           desc:“P mirror” },
+{ id:“OLL31”, name:“OLL 31”,  group:“P”,            alg:“R’ U’ F U R U’ R’ F’ R”,                 desc:“P 2” },
+{ id:“OLL32”, name:“OLL 32”,  group:“P”,            alg:“R U B’ U’ R’ U R B R’”,                  desc:“P mirror 2” },
+{ id:“OLL33”, name:“OLL 33”,  group:“T”,            alg:“R U R’ U’ R’ F R F’”,                    desc:“T shape” },
+{ id:“OLL34”, name:“OLL 34”,  group:“C”,            alg:“R U R2 U’ R’ F R U R U’ F’”,             desc:“C shape” },
+{ id:“OLL35”, name:“OLL 35”,  group:“Fish”,         alg:“R U2 R2 F R F’ R U2 R’”,                 desc:“Fish 3” },
+{ id:“OLL36”, name:“OLL 36”,  group:“W”,            alg:“R’ U’ R U’ R’ U R U R B’ R’ B”,          desc:“W shape” },
+{ id:“OLL37”, name:“OLL 37”,  group:“Fish”,         alg:“F R’ F’ R U R U’ R’”,                    desc:“Fish 4” },
+{ id:“OLL38”, name:“OLL 38”,  group:“W”,            alg:“R U R’ U R U’ R’ U’ R’ F R F’”,          desc:“W mirror” },
+{ id:“OLL39”, name:“OLL 39”,  group:“Big L”,        alg:“L F’ L’ U’ L U F U’ L’”,                 desc:“Big L” },
+{ id:“OLL40”, name:“OLL 40”,  group:“Big L”,        alg:“R’ F R U R’ U’ F’ U R”,                  desc:“Big L mirror” },
+{ id:“OLL41”, name:“OLL 41”,  group:“Awkward”,      alg:“R U R’ U R U2 R’ F R U R’ U’ F’”,        desc:“Awkward” },
+{ id:“OLL42”, name:“OLL 42”,  group:“Awkward”,      alg:“R’ U’ R U’ R’ U2 R F R U R’ U’ F’”,      desc:“Awkward mirror” },
+{ id:“OLL43”, name:“OLL 43”,  group:“P”,            alg:“F’ U’ L’ U L F”,                         desc:“P 3” },
+{ id:“OLL44”, name:“OLL 44”,  group:“P”,            alg:“F U R U’ R’ F’”,                         desc:“P 4” },
+{ id:“OLL45”, name:“OLL 45”,  group:“T”,            alg:“F R U R’ U’ F’”,                         desc:“T shape – easiest OLL” },
+{ id:“OLL46”, name:“OLL 46”,  group:“C”,            alg:“R’ U’ R’ F R F’ U R”,                    desc:“C mirror” },
+{ id:“OLL47”, name:“OLL 47”,  group:“I”,            alg:“F’ L’ U’ L U L’ U’ L U F”,               desc:“I shape” },
+{ id:“OLL48”, name:“OLL 48”,  group:“I”,            alg:“F R U R’ U’ R U R’ U’ F’”,               desc:“I mirror” },
+{ id:“OLL49”, name:“OLL 49”,  group:“I”,            alg:“r U’ r2 U r2 U r2 U’ r”,                 desc:“I 2” },
+{ id:“OLL50”, name:“OLL 50”,  group:“I”,            alg:“r’ U r2 U’ r2 U’ r2 U r’”,               desc:“I mirror 2” },
+{ id:“OLL51”, name:“OLL 51”,  group:“I”,            alg:“F U R U’ R’ U R U’ R’ F’”,               desc:“I 3” },
+{ id:“OLL52”, name:“OLL 52”,  group:“I”,            alg:“R U R’ U R U’ B U’ B’ R’”,               desc:“I 4” },
+{ id:“OLL53”, name:“OLL 53”,  group:“Awkward”,      alg:“r’ U’ R U’ R’ U R U’ R’ U2 r”,           desc:“Awkward 2” },
+{ id:“OLL54”, name:“OLL 54”,  group:“Awkward”,      alg:“r U R’ U R U’ R’ U R U2 r’”,             desc:“Awkward mirror 2” },
+{ id:“OLL55”, name:“OLL 55”,  group:“All Edges”,    alg:“R U2 R2 U’ R U’ R’ U2 F R F’”,           desc:“All edges oriented” },
+{ id:“OLL56”, name:“OLL 56”,  group:“All Edges”,    alg:“r’ U’ r U’ R’ U R U’ R’ U R r’ U r”,     desc:“All edges 2” },
+{ id:“OLL57”, name:“OLL 57”,  group:“Arrow”,        alg:“R U R’ U’ M’ U R U’ r’”,                 desc:“Arrow mirror” },
+];
+
+// OLL patterns are stored in component state and persisted via window.storage
+
+const PLL_ALGS = [
+{ id:“PLL_Ua”,  name:“Ua Perm”,  group:“Edges Only”,   alg:“M2 U M U2 M’ U M2”,                                                    desc:“3-cycle of edges CW” },
+{ id:“PLL_Ub”,  name:“Ub Perm”,  group:“Edges Only”,   alg:“M2 U’ M U2 M’ U’ M2”,                                                   desc:“3-cycle of edges CCW” },
+{ id:“PLL_Z”,   name:“Z Perm”,   group:“Edges Only”,   alg:“M2 U M2 U M’ U2 M2 U2 M’”,                                              desc:“Adjacent edge swap ×2” },
+{ id:“PLL_H”,   name:“H Perm”,   group:“Edges Only”,   alg:“M2 U M2 U2 M2 U M2”,                                                    desc:“Opposite edge swap ×2” },
+{ id:“PLL_Aa”,  name:“Aa Perm”,  group:“Corners Only”, alg:“x R’ U R’ D2 R U’ R’ D2 R2 x’”,                                         desc:“3-cycle of corners CW” },
+{ id:“PLL_Ab”,  name:“Ab Perm”,  group:“Corners Only”, alg:“x R2 D2 R U R’ D2 R U’ R x’”,                                           desc:“3-cycle of corners CCW” },
+{ id:“PLL_E”,   name:“E Perm”,   group:“Corners Only”, alg:“x’ R U’ R’ D R U R’ D’ R U R’ D R U’ R’ D’ x”,                          desc:“E layer double swap” },
+{ id:“PLL_Ra”,  name:“Ra Perm”,  group:“Mixed”,        alg:“R U’ R’ U’ R U R D R’ U’ R D’ R’ U2 R’”,                                 desc:“3-cycle corners + edges” },
+{ id:“PLL_Rb”,  name:“Rb Perm”,  group:“Mixed”,        alg:“R’ U2 R U2 R’ F R U R’ U’ R’ F’ R2”,                                    desc:“Ra mirror” },
+{ id:“PLL_Ja”,  name:“Ja Perm”,  group:“Mixed”,        alg:“x R2 F R F’ R U2 r’ U r U2 x’”,                                         desc:“J perm” },
+{ id:“PLL_Jb”,  name:“Jb Perm”,  group:“Mixed”,        alg:“R U R’ F’ R U R’ U’ R’ F R2 U’ R’”,                                     desc:“J perm mirror” },
+{ id:“PLL_T”,   name:“T Perm”,   group:“Mixed”,        alg:“R U R’ U’ R’ F R2 U’ R’ U’ R U R’ F’”,                                  desc:“T shape swap” },
+{ id:“PLL_F”,   name:“F Perm”,   group:“Mixed”,        alg:“R’ U’ F’ R U R’ U’ R’ F R2 U’ R’ U’ R U R’ U R”,                        desc:“F perm” },
+{ id:“PLL_V”,   name:“V Perm”,   group:“Mixed”,        alg:“R’ U R’ U’ y R’ F’ R2 U’ R’ U R’ F R F”,                                desc:“V shape” },
+{ id:“PLL_Y”,   name:“Y Perm”,   group:“Mixed”,        alg:“F R U’ R’ U’ R U R’ F’ R U R’ U’ R’ F R F’”,                            desc:“Y shape” },
+{ id:“PLL_Na”,  name:“Na Perm”,  group:“Mixed”,        alg:“R U R’ U R U R’ F’ R U R’ U’ R’ F R2 U’ R’ U2 R U’ R’”,                 desc:“N perm – Z diagonal swap” },
+{ id:“PLL_Nb”,  name:“Nb Perm”,  group:“Mixed”,        alg:“R’ U L’ U2 R U’ L R’ U L’ U2 R U’ L”,                                   desc:“N perm mirror” },
+{ id:“PLL_Ga”,  name:“Ga Perm”,  group:“G Perms”,      alg:“R2 U R’ U R’ U’ R U’ R2 D U’ R’ U R D’”,                               desc:“G perm A” },
+{ id:“PLL_Gb”,  name:“Gb Perm”,  group:“G Perms”,      alg:“R’ U’ R U D’ R2 U R’ U R U’ R U’ R2 D”,                                desc:“G perm B” },
+{ id:“PLL_Gc”,  name:“Gc Perm”,  group:“G Perms”,      alg:“R2 F2 R U2 R U2 R’ F R U R’ U’ R’ F R2”,                               desc:“G perm C” },
+{ id:“PLL_Gd”,  name:“Gd Perm”,  group:“G Perms”,      alg:“D’ R U R’ U’ D R2 U’ R U’ R’ U R’ U R2”,                               desc:“G perm D” },
+];
+
+const ALL_ALGS = [
+…OLL_ALGS.map(a => ({ …a, type: “OLL” })),
+…PLL_ALGS.map(a => ({ …a, type: “PLL” })),
+];
+
+const GROUP_COLORS = {
+“Dot”:”#6b7280”,“2 Edges”:”#34d399”,“Square”:”#fbbf24”,“Small L”:”#60a5fa”,
+“Fish”:”#ec4899”,“Knight Move”:”#c084fc”,“Cross”:”#22c55e”,“Sune”:”#f59e0b”,
+“Arrow”:”#06b6d4”,“P”:”#84cc16”,“T”:”#a78bfa”,“C”:”#8b5cf6”,“W”:”#f43f5e”,
+“Big L”:”#fb923c”,“Awkward”:”#f87171”,“All Edges”:”#38bdf8”,“I”:”#14b8a6”,
+“Edges Only”:”#38bdf8”,“Corners Only”:”#fb7185”,“Mixed”:”#a3e635”,“G Perms”:”#fcd34d”,
+};
+
+const moveColor = (m) => {
+if (m.includes(“U”)) return “#facc15”;
+if (m.includes(“D”)) return “#e2e8f0”;
+if (m.includes(“R”)) return “#ef4444”;
+if (m.includes(“L”)) return “#f97316”;
+if (m.includes(“F”)) return “#22c55e”;
+if (m.includes(“B”)) return “#3b82f6”;
+if (m.includes(“M”)||m.includes(“r”)||m.includes(“l”)) return “#a78bfa”;
+if (m.includes(“x”)||m.includes(“y”)||m.includes(“z”)) return “#6b7280”;
+return “#e2e8f0”;
+};
+
+function AlgDisplay({ alg }) {
+return (
+<div style={{ display:“flex”, flexWrap:“wrap”, gap:“5px”, justifyContent:“center” }}>
+{alg.split(” “).filter(Boolean).map((t,i) => (
+<span key={i} style={{
+fontFamily:”‘JetBrains Mono’,monospace”, fontSize:“0.9rem”, fontWeight:700,
+color:moveColor(t), background:“rgba(255,255,255,0.06)”,
+border:`1px solid ${moveColor(t)}44`, borderRadius:“6px”,
+padding:“3px 8px”, letterSpacing:“0.05em”,
+}}>{t}</span>
+))}
+</div>
+);
+}
+
+function CubeDiagram({ alg, size=110, ollPatterns }) {
+if (alg.type === “OLL”) return <OLLDiagram data={patternToData(ollPatterns && ollPatterns[alg.id])} size={size} />;
+return <PLLDiagram id={alg.id} size={size} />;
+}
+
+// ─── UI primitives ────────────────────────────────────────────────────────────
+const S = {
+root: {
+minHeight:“100vh”,
+background:“linear-gradient(135deg,#060810 0%,#0c1120 50%,#060810 100%)”,
+fontFamily:”‘Syne’,sans-serif”, color:”#e2e8f0”, padding:0,
+},
+grid: {
+position:“fixed”, inset:0, zIndex:0, pointerEvents:“none”,
+backgroundImage:`linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)`,
+backgroundSize:“36px 36px”,
+},
+wrap: { maxWidth:“900px”, margin:“0 auto”, padding:“28px 18px”, position:“relative”, zIndex:1 },
+card: {
+background:“rgba(255,255,255,0.04)”, border:“1px solid rgba(255,255,255,0.08)”,
+borderRadius:“20px”, padding:“28px”, backdropFilter:“blur(12px)”,
+boxShadow:“0 8px 32px rgba(0,0,0,0.5)”,
+},
+btn: (c=”#a78bfa”) => ({
+background:`rgba(${c==="Y"?"167,139,250":c==="G"?"34,197,94":c==="R"?"244,63,94":c==="B"?"56,189,248":"167,139,250"},0.12)`,
+border:`1px solid ${c}55`, borderRadius:“12px”, color:c,
+padding:“11px 22px”, fontSize:“0.9rem”, fontWeight:700,
+cursor:“pointer”, fontFamily:”‘Syne’,sans-serif”, letterSpacing:“0.04em”,
+transition:“all 0.15s”,
+}),
+primary: {
+background:“linear-gradient(135deg,#a78bfa,#38bdf8)”, border:“none”,
+borderRadius:“12px”, color:”#fff”, padding:“13px 30px”,
+fontSize:“1rem”, fontWeight:800, cursor:“pointer”,
+fontFamily:”‘Syne’,sans-serif”, letterSpacing:“0.03em”,
+boxShadow:“0 4px 20px rgba(167,139,250,0.3)”, transition:“all 0.15s”,
+},
+tag: (c) => ({
+display:“inline-block”, background:`${c}22`, border:`1px solid ${c}55`,
+borderRadius:“6px”, color:c, padding:“2px 9px”,
+fontSize:“0.7rem”, fontWeight:700, letterSpacing:“0.07em”, textTransform:“uppercase”,
+}),
+};
+
+function NavBar({ onBack, title }) {
+return (
+<div style={{ display:“flex”, alignItems:“center”, gap:“14px”, marginBottom:“28px” }}>
+<button onClick={onBack} style={{ background:“rgba(255,255,255,0.06)”, border:“1px solid rgba(255,255,255,0.1)”, borderRadius:“10px”, color:”#94a3b8”, padding:“8px 16px”, cursor:“pointer”, fontFamily:”‘Syne’,sans-serif”, fontSize:“0.875rem” }}>← Back</button>
+<span style={{ fontWeight:800, fontSize:“1.15rem” }}>{title}</span>
+</div>
+);
+}
+
+function StatPill({ label, value, color }) {
+return (
+<div style={{ textAlign:“center” }}>
+<div style={{ fontSize:“1.5rem”, fontWeight:900, color }}>{value}</div>
+<div style={{ fontSize:“0.72rem”, color:”#64748b”, textTransform:“uppercase”, letterSpacing:“0.08em” }}>{label}</div>
+</div>
+);
+}
+
+function Toast({ msg, ok }) {
+return (
+<div style={{
+position:“fixed”, bottom:“22px”, left:“50%”, transform:“translateX(-50%)”,
+background:ok?“rgba(34,197,94,0.15)”:“rgba(244,63,94,0.15)”,
+border:`1px solid ${ok?"#22c55e55":"#f43f5e55"}`,
+color:ok?”#22c55e”:”#f43f5e”, borderRadius:“12px”, padding:“11px 22px”,
+fontFamily:”‘Syne’,sans-serif”, fontWeight:700, fontSize:“0.875rem”,
+zIndex:1000, backdropFilter:“blur(8px)”, boxShadow:“0 8px 32px rgba(0,0,0,0.5)”,
+whiteSpace:“nowrap”,
+}}>{msg}</div>
+);
+}
+
+function ActionCard({ icon, title, desc, color, onClick }) {
+const [hov, setHov] = useState(false);
+return (
+<div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+style={{
+background:hov?`${color}12`:“rgba(255,255,255,0.03)”,
+border:`1px solid ${hov?color+"44":"rgba(255,255,255,0.07)"}`,
+borderRadius:“18px”, padding:“26px”, cursor:“pointer”,
+transition:“all 0.18s”,
+transform:hov?“translateY(-2px)”:“none”,
+boxShadow:hov?`0 8px 28px ${color}20`:“none”,
+}}>
+<div style={{ fontSize:“1.8rem”, marginBottom:“10px” }}>{icon}</div>
+<div style={{ fontSize:“1.1rem”, fontWeight:800, color, marginBottom:“7px” }}>{title}</div>
+<div style={{ color:”#64748b”, fontSize:“0.85rem”, lineHeight:1.6 }}>{desc}</div>
+</div>
+);
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+function SpeedcubingTrainer() {
+const [view, setView] = useState(“home”);
+const [filter, setFilter] = useState(“ALL”);
+const [learned, setLearned] = useState({});
+const [ollPatterns, setOllPatterns] = useState({});
+const [loaded, setLoaded] = useState(false);
+const [editOllId, setEditOllId] = useState(null);
+const [queue, setQueue] = useState([]);
+const [qIdx, setQIdx] = useState(0);
+const [revealed, setRevealed] = useState(false);
+const [quizPool, setQuizPool] = useState([]);
+const [quizIdx, setQuizIdx] = useState(0);
+const [quizRevealed, setQuizRevealed] = useState(false);
+const [quizScore, setQuizScore] = useState({ correct:0, wrong:0 });
+const [reviewFilter, setReviewFilter] = useState(“ALL”);
+const [search, setSearch] = useState(””);
+const [toast, setToast] = useState(null);
+
+useEffect(() => {
+(async () => {
+try {
+const r1 = { value: localStorage.getItem(“sc2_learned”) };
+if (r1 && r1.value) setLearned(JSON.parse(r1.value));
+} catch {}
+try {
+const r2 = { value: localStorage.getItem(“sc2_oll_patterns”) };
+if (r2 && r2.value) setOllPatterns(JSON.parse(r2.value));
+} catch {}
+setLoaded(true);
+})();
+}, []);
+
+const persist = (next) => {
+setLearned(next);
+try { localStorage.setItem(“sc2_learned”, JSON.stringify(next)); } catch {}
+};
+const persistPatterns = (next) => {
+setOllPatterns(next);
+try { localStorage.setItem(“sc2_oll_patterns”, JSON.stringify(next)); } catch {}
+};
+const showToast = (msg, ok=true) => { setToast({msg,ok}); setTimeout(()=>setToast(null),2000); };
+
+const learnedCount = Object.values(learned).filter(Boolean).length;
+const ollLearned = OLL_ALGS.filter(a=>learned[a.id]).length;
+const pllLearned = PLL_ALGS.filter(a=>learned[a.id]).length;
+
+const startLearn = () => {
+const pool = ALL_ALGS.filter(a=>(filter===“ALL”||a.type===filter)&&!learned[a.id]);
+if (!pool.length) { showToast(“All algorithms learned! 🎉”); return; }
+setQueue(pool.slice(0,5)); setQIdx(0); setRevealed(false); setView(“learn”);
+};
+const startQuiz = () => {
+const pool = ALL_ALGS.filter(a=>(filter===“ALL”||a.type===filter)&&learned[a.id]);
+if (!pool.length) { showToast(“Learn some algorithms first!”, false); return; }
+setQuizPool([…pool].sort(()=>Math.random()-0.5));
+setQuizIdx(0); setQuizRevealed(false); setQuizScore({correct:0,wrong:0}); setView(“quiz”);
+};
+const markLearned = (id) => {
+persist({…learned,[id]:true});
+showToast(“Marked as learned ✓”);
+if (qIdx+1>=queue.length) setView(“done”);
+else { setQIdx(q=>q+1); setRevealed(false); }
+};
+const skipAlg = () => {
+if (qIdx+1>=queue.length) setView(“done”);
+else { setQIdx(q=>q+1); setRevealed(false); }
+};
+const quizAnswer = (correct) => {
+setQuizScore(s=>correct?{…s,correct:s.correct+1}:{…s,wrong:s.wrong+1});
+if (quizIdx+1>=quizPool.length) setView(“quizDone”);
+else { setQuizIdx(i=>i+1); setQuizRevealed(false); }
+};
+
+const reviewAlgs = ALL_ALGS.filter(a=>{
+if (reviewFilter===“OLL”&&a.type!==“OLL”) return false;
+if (reviewFilter===“PLL”&&a.type!==“PLL”) return false;
+if (reviewFilter===“LEARNED”&&!learned[a.id]) return false;
+if (search && !a.name.toLowerCase().includes(search.toLowerCase()) &&
+!a.alg.toLowerCase().includes(search.toLowerCase()) &&
+!a.group.toLowerCase().includes(search.toLowerCase())) return false;
+return true;
+});
+
+// ── EDIT OLL VIEW ──
+if (view === “editOll” && editOllId) {
+const ollAlg = OLL_ALGS.find(a => a.id === editOllId);
+if (!ollAlg) { setView(“review”); }
+const gc = GROUP_COLORS[ollAlg?.group] || “#64748b”;
+const currentPat = ollPatterns[editOllId] || BLANK_PATTERN;
+const currentData = patternToData(currentPat);
+const validation = validatePattern(currentPat);
+const hasPattern = currentPat !== BLANK_PATTERN;
+
+```
+const toggleSticker = (idx) => {
+  const arr = currentPat.split('');
+  if (idx === 4) return; // center always yellow
+  arr[idx] = arr[idx] === "Y" ? "G" : "Y";
+  arr[4] = "Y"; // ensure center stays yellow
+  const newPat = arr.join('');
+  persistPatterns({ ...ollPatterns, [editOllId]: newPat });
+};
+
+const resetPattern = () => {
+  persistPatterns({ ...ollPatterns, [editOllId]: BLANK_PATTERN });
+};
+
+return (
+  <div style={S.root}><Fonts/><div style={S.grid}/>
+    {toast && <Toast {...toast}/>}
+    <div style={S.wrap}>
+      <NavBar onBack={() => setView("review")} title="Edit OLL Diagram"/>
+      <div style={{...S.card, maxWidth:"520px", margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:"20px"}}>
+          <div style={{fontSize:"1.5rem",fontWeight:900,marginBottom:"4px"}}>{ollAlg.name}</div>
+          <div style={{display:"flex",gap:"6px",justifyContent:"center",marginBottom:"10px"}}>
+            <span style={S.tag(gc)}>{ollAlg.group}</span>
+            <span style={S.tag("#38bdf8")}>OLL</span>
+          </div>
+          <div style={{color:"#94a3b8",fontSize:"0.85rem"}}>{ollAlg.desc}</div>
+        </div>
+
+        <div style={{background:"rgba(0,0,0,0.25)",borderRadius:"12px",padding:"14px",marginBottom:"18px",border:"1px solid rgba(255,255,255,0.06)"}}>
+          <AlgDisplay alg={ollAlg.alg}/>
+        </div>
+
+        <div style={{textAlign:"center",color:"#64748b",fontSize:"0.78rem",marginBottom:"12px",letterSpacing:"0.04em"}}>
+          Click stickers to toggle yellow / gray
+        </div>
+
+        <div style={{display:"flex",justifyContent:"center",marginBottom:"20px"}}>
+          <div style={{background:"rgba(0,0,0,0.3)",borderRadius:"16px",padding:"16px",border:"1px solid rgba(255,255,255,0.07)"}}>
+            <OLLDiagram data={currentData} size={180} onToggle={toggleSticker} />
+          </div>
+        </div>
+
+        {/* Validation feedback */}
+        <div style={{
+          background: validation.valid ? "rgba(34,197,94,0.08)" : "rgba(251,191,36,0.08)",
+          border: `1px solid ${validation.valid ? "#22c55e33" : "#fbbf2433"}`,
+          borderRadius:"10px", padding:"12px 16px", marginBottom:"18px",
+        }}>
+          <div style={{display:"flex",gap:"16px",justifyContent:"center",flexWrap:"wrap",fontSize:"0.82rem"}}>
+            <span style={{color: validation.total === 9 ? "#22c55e" : "#fbbf24"}}>
+              {validation.total === 9 ? "✓" : "✗"} Yellows: {validation.total}/9
+            </span>
+            <span style={{color: validation.edgesOk ? "#22c55e" : "#fbbf24"}}>
+              {validation.edgesOk ? "✓" : "✗"} Edges
+            </span>
+            <span style={{color: validation.cornersOk ? "#22c55e" : "#fbbf24"}}>
+              {validation.cornersOk ? "✓" : "✗"} Corners
+            </span>
+          </div>
+          {!validation.valid && (
+            <div style={{color:"#94a3b8",fontSize:"0.75rem",textAlign:"center",marginTop:"8px"}}>
+              {validation.total !== 9 && `Need exactly 9 yellow stickers (have ${validation.total}). `}
+              {!validation.edgesOk && "Each edge must have exactly 1 yellow. "}
+              {!validation.cornersOk && "Each corner must have exactly 1 yellow."}
+            </div>
+          )}
+        </div>
+
+        <div style={{display:"flex",gap:"10px",justifyContent:"center"}}>
+          <button style={S.primary} onClick={() => {
+            if (validation.valid) {
+              showToast("Pattern saved ✓");
+              setView("review");
+            } else {
+              showToast("Pattern isn't valid yet — check constraints above", false);
+            }
+          }}>Done</button>
+          <button style={S.btn("#f59e0b")} onClick={resetPattern}>Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+```
+
+}
+
+// ── LEARN VIEW ──
+if (view===“learn” && queue[qIdx]) {
+const alg = queue[qIdx];
+const gc = GROUP_COLORS[alg.group]||”#64748b”;
+return (
+<div style={S.root}>
+<Fonts />
+<div style={S.grid}/>
+{toast && <Toast {…toast}/>}
+<div style={S.wrap}>
+<NavBar onBack={()=>setView(“home”)} title=“Learn Mode”/>
+<div style={{textAlign:“center”,color:”#475569”,fontSize:“0.85rem”,marginBottom:“14px”}}>
+Algorithm {qIdx+1} of {queue.length}
+</div>
+<div style={{…S.card, maxWidth:“640px”, margin:“0 auto”}}>
+<div style={{display:“flex”,gap:“20px”,alignItems:“flex-start”,marginBottom:“22px”,flexWrap:“wrap”}}>
+{/* Diagram */}
+<div style={{
+background:“rgba(0,0,0,0.3)”,borderRadius:“14px”,padding:“12px”,
+border:“1px solid rgba(255,255,255,0.07)”,flexShrink:0,
+}}>
+<CubeDiagram alg={alg} size={120} ollPatterns={ollPatterns}/>
+<div style={{textAlign:“center”,fontSize:“0.65rem”,color:”#475569”,marginTop:“6px”,letterSpacing:“0.06em”}}>
+{alg.type===“OLL”?“TOP VIEW”:“TOP VIEW (ARROWS)”}
+</div>
+</div>
+{/* Info */}
+<div style={{flex:1,minWidth:“160px”}}>
+<div style={{fontSize:“1.5rem”,fontWeight:900,marginBottom:“6px”}}>{alg.name}</div>
+<div style={{display:“flex”,gap:“6px”,flexWrap:“wrap”,marginBottom:“10px”}}>
+<span style={S.tag(gc)}>{alg.group}</span>
+<span style={S.tag(”#38bdf8”)}>{alg.type}</span>
+</div>
+<div style={{color:”#94a3b8”,fontSize:“0.875rem”,lineHeight:1.6}}>{alg.desc}</div>
+</div>
+</div>
+
+```
+        <div style={{background:"rgba(0,0,0,0.25)",borderRadius:"12px",padding:"18px",marginBottom:"22px",border:"1px solid rgba(255,255,255,0.06)"}}>
+          <div style={{color:"#475569",fontSize:"0.7rem",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"12px"}}>Algorithm</div>
+          <AlgDisplay alg={alg.alg}/>
+        </div>
+
+        {!revealed ? (
+          <div style={{textAlign:"center"}}>
+            <button style={S.primary} onClick={()=>setRevealed(true)}>I've studied this →</button>
+          </div>
+        ) : (
+          <div style={{display:"flex",gap:"10px",justifyContent:"center"}}>
+            <button style={S.btn("#22c55e")} onClick={()=>markLearned(alg.id)}>✓ Got it!</button>
+            <button style={S.btn("#f59e0b")} onClick={skipAlg}>Skip for now</button>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
+```
+
+}
+
+// ── QUIZ VIEW ──
+if (view===“quiz” && quizPool[quizIdx]) {
+const alg = quizPool[quizIdx];
+const gc = GROUP_COLORS[alg.group]||”#64748b”;
+const pct = (quizIdx/quizPool.length)*100;
+return (
+<div style={S.root}>
+<Fonts/>
+<div style={S.grid}/>
+<div style={S.wrap}>
+<NavBar onBack={()=>setView(“home”)} title=“Quiz Mode”/>
+<div style={{display:“flex”,gap:“12px”,marginBottom:“14px”,justifyContent:“center”,fontSize:“0.875rem”}}>
+<span style={{color:”#22c55e”}}>✓ {quizScore.correct}</span>
+<span style={{color:”#475569”}}>·</span>
+<span style={{color:”#f43f5e”}}>✗ {quizScore.wrong}</span>
+<span style={{color:”#475569”}}>·</span>
+<span style={{color:”#64748b”}}>{quizIdx}/{quizPool.length}</span>
+</div>
+<div style={{height:“6px”,borderRadius:“3px”,background:“rgba(255,255,255,0.07)”,overflow:“hidden”,marginBottom:“24px”}}>
+<div style={{height:“100%”,width:`${pct}%`,background:“linear-gradient(90deg,#a78bfa,#38bdf8)”,transition:“width 0.4s”}}/>
+</div>
+<div style={{…S.card,maxWidth:“640px”,margin:“0 auto”}}>
+<div style={{display:“flex”,gap:“20px”,alignItems:“flex-start”,marginBottom:“22px”,flexWrap:“wrap”}}>
+<div style={{background:“rgba(0,0,0,0.3)”,borderRadius:“14px”,padding:“12px”,border:“1px solid rgba(255,255,255,0.07)”,flexShrink:0}}>
+<CubeDiagram alg={alg} size={120} ollPatterns={ollPatterns}/>
+<div style={{textAlign:“center”,fontSize:“0.65rem”,color:”#475569”,marginTop:“6px”,letterSpacing:“0.06em”}}>
+{alg.type===“OLL”?“TOP VIEW”:“TOP VIEW (ARROWS)”}
+</div>
+</div>
+<div style={{flex:1}}>
+<div style={{color:”#64748b”,fontSize:“0.72rem”,letterSpacing:“0.12em”,textTransform:“uppercase”,marginBottom:“6px”}}>What’s the algorithm?</div>
+<div style={{fontSize:“1.5rem”,fontWeight:900,marginBottom:“8px”}}>{alg.name}</div>
+<div style={{display:“flex”,gap:“6px”,flexWrap:“wrap”,marginBottom:“10px”}}>
+<span style={S.tag(gc)}>{alg.group}</span>
+<span style={S.tag(”#38bdf8”)}>{alg.type}</span>
+</div>
+<div style={{color:”#94a3b8”,fontSize:“0.85rem”}}>{alg.desc}</div>
+</div>
+</div>
+{!quizRevealed ? (
+<div style={{textAlign:“center”}}>
+<button style={S.primary} onClick={()=>setQuizRevealed(true)}>Show Algorithm</button>
+</div>
+) : (
+<>
+<div style={{background:“rgba(0,0,0,0.25)”,borderRadius:“12px”,padding:“16px”,marginBottom:“18px”,border:“1px solid rgba(255,255,255,0.06)”}}>
+<AlgDisplay alg={alg.alg}/>
+</div>
+<div style={{display:“flex”,gap:“10px”,justifyContent:“center”}}>
+<button style={{…S.btn(”#22c55e”),flex:1}} onClick={()=>quizAnswer(true)}>✓ Knew it</button>
+<button style={{…S.btn(”#f43f5e”),flex:1}} onClick={()=>quizAnswer(false)}>✗ Missed it</button>
+</div>
+</>
+)}
+</div>
+</div>
+</div>
+);
+}
+
+// ── QUIZ DONE ──
+if (view===“quizDone”) {
+const total = quizPool.length;
+const pct = Math.round((quizScore.correct/total)*100);
+return (
+<div style={S.root}><Fonts/><div style={S.grid}/>
+<div style={S.wrap}>
+<NavBar onBack={()=>setView(“home”)} title=“Results”/>
+<div style={{…S.card,maxWidth:“420px”,margin:“0 auto”,textAlign:“center”}}>
+<div style={{fontSize:“3.5rem”,marginBottom:“14px”}}>{pct>=80?“🏆”:pct>=50?“💪”:“📚”}</div>
+<div style={{fontSize:“3rem”,fontWeight:900,background:“linear-gradient(135deg,#a78bfa,#38bdf8)”,WebkitBackgroundClip:“text”,WebkitTextFillColor:“transparent”}}>{pct}%</div>
+<div style={{color:”#94a3b8”,marginBottom:“24px”}}>{quizScore.correct} correct out of {total}</div>
+<div style={{display:“flex”,gap:“10px”,justifyContent:“center”}}>
+<button style={S.primary} onClick={startQuiz}>Retry Quiz</button>
+<button style={S.btn()} onClick={()=>setView(“home”)}>Home</button>
+</div>
+</div>
+</div>
+</div>
+);
+}
+
+// ── DONE ──
+if (view===“done”) {
+return (
+<div style={S.root}><Fonts/><div style={S.grid}/>
+<div style={S.wrap}>
+<NavBar onBack={()=>setView(“home”)} title=“Session Done”/>
+<div style={{…S.card,maxWidth:“420px”,margin:“0 auto”,textAlign:“center”}}>
+<div style={{fontSize:“3rem”,marginBottom:“14px”}}>🔥</div>
+<div style={{fontSize:“1.5rem”,fontWeight:900,marginBottom:“8px”}}>Session Complete!</div>
+<div style={{color:”#94a3b8”,marginBottom:“24px”}}>Take a break, practise on your cube, then come back to quiz yourself.</div>
+<div style={{display:“flex”,gap:“10px”,justifyContent:“center”}}>
+<button style={S.primary} onClick={startLearn}>Learn More</button>
+<button style={S.btn()} onClick={()=>setView(“home”)}>Home</button>
+</div>
+</div>
+</div>
+</div>
+);
+}
+
+// ── REVIEW ──
+if (view===“review”) {
+return (
+<div style={S.root}><Fonts/><div style={S.grid}/>
+<div style={S.wrap}>
+<NavBar onBack={()=>setView(“home”)} title=“Algorithm Library”/>
+<div style={{display:“flex”,gap:“8px”,flexWrap:“wrap”,marginBottom:“16px”,alignItems:“center”}}>
+{[“ALL”,“OLL”,“PLL”,“LEARNED”].map(f=>(
+<button key={f} onClick={()=>setReviewFilter(f)} style={{
+…S.btn(reviewFilter===f?”#a78bfa”:”#475569”),
+background:reviewFilter===f?“rgba(167,139,250,0.18)”:“rgba(255,255,255,0.03)”,
+}}>{f===“LEARNED”?“✓ Learned”:f}</button>
+))}
+<input value={search} onChange={e=>setSearch(e.target.value)} placeholder=“Search…” style={{
+flex:1,minWidth:“160px”,background:“rgba(255,255,255,0.04)”,
+border:“1px solid rgba(255,255,255,0.09)”,borderRadius:“10px”,
+padding:“9px 14px”,color:”#e2e8f0”,fontFamily:”‘Syne’,sans-serif”,fontSize:“0.875rem”,outline:“none”,
+}}/>
+</div>
+<div style={{color:”#475569”,fontSize:“0.8rem”,marginBottom:“14px”}}>{reviewAlgs.length} algorithms</div>
+<div style={{display:“flex”,flexDirection:“column”,gap:“8px”}}>
+{reviewAlgs.map(alg=>(
+<ReviewRow key={alg.id} alg={alg} learned={!!learned[alg.id]} ollPatterns={ollPatterns} onToggle={()=>{
+persist({…learned,[alg.id]:!learned[alg.id]});
+}} onEdit={alg.type===“OLL” ? ()=>{ setEditOllId(alg.id); setView(“editOll”); } : null}/>
+))}
+</div>
+{!reviewAlgs.length&&<div style={{textAlign:“center”,color:”#374151”,padding:“60px”}}>No matches</div>}
+</div>
+</div>
+);
+}
+
+// ── HOME ──
+return (
+<div style={S.root}><Fonts/><div style={S.grid}/>
+{toast&&<Toast {…toast}/>}
+<div style={S.wrap}>
+<div style={{textAlign:“center”,marginBottom:“36px”}}>
+<div style={{fontSize:“clamp(1.8rem,5vw,3rem)”,fontWeight:900,letterSpacing:”-0.03em”,background:“linear-gradient(135deg,#fff 0%,#a78bfa 50%,#38bdf8 100%)”,WebkitBackgroundClip:“text”,WebkitTextFillColor:“transparent”,marginBottom:“6px”,lineHeight:1}}>⚡ CubeTrainer</div>
+<div style={{color:”#475569”,fontSize:“0.8rem”,letterSpacing:“0.12em”,textTransform:“uppercase”}}>OLL & PLL Mastery</div>
+</div>
+
+```
+    <div style={{...S.card,marginBottom:"24px"}}>
+      <div style={{display:"flex",justifyContent:"space-around",marginBottom:"18px",flexWrap:"wrap",gap:"12px"}}>
+        <StatPill label="Total" value={`${learnedCount}/${ALL_ALGS.length}`} color="#a78bfa"/>
+        <StatPill label="OLL" value={`${ollLearned}/${OLL_ALGS.length}`} color="#38bdf8"/>
+        <StatPill label="PLL" value={`${pllLearned}/${PLL_ALGS.length}`} color="#34d399"/>
+        <StatPill label="Diagrams" value={`${Object.values(ollPatterns).filter(p => p && p !== BLANK_PATTERN).length}/${OLL_ALGS.length}`} color="#fbbf24"/>
+      </div>
+      <div style={{height:"7px",borderRadius:"4px",background:"rgba(255,255,255,0.07)",overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${(learnedCount/ALL_ALGS.length)*100}%`,background:"linear-gradient(90deg,#a78bfa,#38bdf8)",borderRadius:"4px",transition:"width 0.6s"}}/>
+      </div>
+      <div style={{textAlign:"right",fontSize:"0.75rem",color:"#374151",marginTop:"5px"}}>{ALL_ALGS.length-learnedCount} remaining</div>
+    </div>
+
+    <div style={{display:"flex",gap:"8px",justifyContent:"center",marginBottom:"22px"}}>
+      {["ALL","OLL","PLL"].map(f=>(
+        <button key={f} onClick={()=>setFilter(f)} style={{
+          ...S.btn(filter===f?"#a78bfa":"#475569"),
+          background:filter===f?"rgba(167,139,250,0.18)":"rgba(255,255,255,0.03)",
+          minWidth:"72px",
+        }}>{f}</button>
+      ))}
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:"14px"}}>
+      <ActionCard icon="📖" title="Learn" color="#a78bfa"
+        desc={`Study the next 5 unlearned ${filter==="ALL"?"OLL/PLL":filter} algorithms with diagrams.`}
+        onClick={startLearn}/>
+      <ActionCard icon="⚡" title="Quiz" color="#38bdf8"
+        desc="Test recall on algorithms you've marked as learned."
+        onClick={startQuiz}/>
+      <ActionCard icon="📚" title="Library" color="#34d399"
+        desc="Browse all 78 algorithms. Toggle learned. Search by name or moves."
+        onClick={()=>setView("review")}/>
+      <ActionCard icon="✎" title="OLL Diagrams" color="#fbbf24"
+        desc="Set up OLL diagram images by clicking stickers. Required for accurate OLL visuals."
+        onClick={()=>{setReviewFilter("OLL");setView("review");}}/>
+      {learnedCount>0&&<ActionCard icon="🗑" title="Reset" color="#f43f5e"
+        desc="Clear progress and start from scratch."
+        onClick={()=>{if(window.confirm("Reset all progress?")){persist({});persistPatterns({});}}}/>}
+    </div>
+  </div>
+</div>
+```
+
+);
+}
+
+function ReviewRow({ alg, learned, onToggle, ollPatterns, onEdit }) {
+const [open, setOpen] = useState(false);
+const gc = GROUP_COLORS[alg.group]||”#64748b”;
+const needsPattern = alg.type === “OLL” && (!ollPatterns[alg.id] || ollPatterns[alg.id] === BLANK_PATTERN);
+return (
+<div style={{background:“rgba(255,255,255,0.03)”,border:`1px solid ${learned?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}`,borderRadius:“14px”,overflow:“hidden”}}>
+<div onClick={()=>setOpen(o=>!o)} style={{display:“flex”,alignItems:“center”,padding:“12px 16px”,cursor:“pointer”,gap:“12px”}}>
+<div style={{width:“9px”,height:“9px”,borderRadius:“50%”,background:learned?”#22c55e”:“rgba(255,255,255,0.12)”,flexShrink:0}}/>
+<div style={{flex:1,minWidth:0}}>
+<div style={{fontWeight:700,fontSize:“0.9rem”}}>{alg.name}</div>
+<div style={{color:”#475569”,fontSize:“0.75rem”,marginTop:“2px”,overflow:“hidden”,textOverflow:“ellipsis”,whiteSpace:“nowrap”}}>{alg.alg}</div>
+</div>
+{needsPattern && <span style={{…S.tag(”#fbbf24”),flexShrink:0}}>needs diagram</span>}
+<span style={{...S.tag(gc),flexShrink:0}}>{alg.group}</span>
+<span style={{…S.tag(”#38bdf8”),flexShrink:0}}>{alg.type}</span>
+<span style={{color:”#374151”,fontSize:“0.75rem”,flexShrink:0}}>{open?“▲”:“▼”}</span>
+</div>
+{open&&(
+<div style={{padding:“0 16px 16px”,borderTop:“1px solid rgba(255,255,255,0.06)”}}>
+<div style={{display:“flex”,gap:“16px”,alignItems:“flex-start”,marginTop:“14px”,flexWrap:“wrap”}}>
+<div style={{background:“rgba(0,0,0,0.3)”,borderRadius:“12px”,padding:“10px”,border:“1px solid rgba(255,255,255,0.06)”,flexShrink:0}}>
+<CubeDiagram alg={alg} size={100} ollPatterns={ollPatterns}/>
+</div>
+<div style={{flex:1,minWidth:“160px”}}>
+<div style={{color:”#94a3b8”,fontSize:“0.82rem”,marginBottom:“12px”,lineHeight:1.5}}>{alg.desc}</div>
+<div style={{background:“rgba(0,0,0,0.2)”,borderRadius:“10px”,padding:“12px”,marginBottom:“12px”}}>
+<AlgDisplay alg={alg.alg}/>
+</div>
+<div style={{display:“flex”,gap:“8px”,flexWrap:“wrap”}}>
+<button onClick={e=>{e.stopPropagation();onToggle();}} style={{
+background:learned?“rgba(244,63,94,0.1)”:“rgba(34,197,94,0.1)”,
+border:`1px solid ${learned?"#f43f5e44":"#22c55e44"}`,
+borderRadius:“8px”,color:learned?”#f43f5e”:”#22c55e”,
+padding:“7px 16px”,cursor:“pointer”,fontFamily:”‘Syne’,sans-serif”,fontSize:“0.82rem”,fontWeight:700,
+}}>{learned?“✗ Mark unlearned”:“✓ Mark learned”}</button>
+{onEdit && <button onClick={e=>{e.stopPropagation();onEdit();}} style={{
+background:“rgba(251,191,36,0.1)”,
+border:“1px solid #fbbf2444”,
+borderRadius:“8px”,color:”#fbbf24”,
+padding:“7px 16px”,cursor:“pointer”,fontFamily:”‘Syne’,sans-serif”,fontSize:“0.82rem”,fontWeight:700,
+}}>{needsPattern ? “✎ Set Diagram” : “✎ Edit Diagram”}</button>}
+</div>
+</div>
+</div>
+</div>
+)}
+</div>
+);
+}
+
+function Fonts() {
+return <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>;
+}
+
+ReactDOM.createRoot(document.getElementById(‘root’)).render(<SpeedcubingTrainer />);
+</script>
+
+</body>
+</html>
