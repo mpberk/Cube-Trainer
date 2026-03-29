@@ -637,40 +637,10 @@ return (
           </div>
         </div>
 
-        {/* Validation feedback */}
-        <div style={{
-          background: validation.valid ? "rgba(34,197,94,0.08)" : "rgba(251,191,36,0.08)",
-          border: `1px solid ${validation.valid ? "#22c55e33" : "#fbbf2433"}`,
-          borderRadius:"10px", padding:"12px 16px", marginBottom:"18px",
-        }}>
-          <div style={{display:"flex",gap:"16px",justifyContent:"center",flexWrap:"wrap",fontSize:"0.82rem"}}>
-            <span style={{color: validation.total === 9 ? "#22c55e" : "#fbbf24"}}>
-              {validation.total === 9 ? "✓" : "✗"} Yellows: {validation.total}/9
-            </span>
-            <span style={{color: validation.edgesOk ? "#22c55e" : "#fbbf24"}}>
-              {validation.edgesOk ? "✓" : "✗"} Edges
-            </span>
-            <span style={{color: validation.cornersOk ? "#22c55e" : "#fbbf24"}}>
-              {validation.cornersOk ? "✓" : "✗"} Corners
-            </span>
-          </div>
-          {!validation.valid && (
-            <div style={{color:"#94a3b8",fontSize:"0.75rem",textAlign:"center",marginTop:"8px"}}>
-              {validation.total !== 9 && `Need exactly 9 yellow stickers (have ${validation.total}). `}
-              {!validation.edgesOk && "Each edge must have exactly 1 yellow. "}
-              {!validation.cornersOk && "Each corner must have exactly 1 yellow."}
-            </div>
-          )}
-        </div>
-
         <div style={{display:"flex",gap:"10px",justifyContent:"center"}}>
           <button style={S.primary} onClick={() => {
-            if (validation.valid) {
-              showToast("Pattern saved ✓");
-              setView("review");
-            } else {
-              showToast("Pattern isn't valid yet — check constraints above", false);
-            }
+            showToast("Pattern saved ✓");
+            setView("review");
           }}>Done</button>
           <button style={S.btn("#f59e0b")} onClick={resetPattern}>Reset</button>
         </div>
