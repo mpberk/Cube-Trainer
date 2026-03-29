@@ -54,7 +54,7 @@ return data.top.join(’’) + data.sides.F.join(’’) + data.sides.B.join(’
 
 function validatePattern(pat) {
 const d = patternToData(pat);
-const all = […d.top, …d.sides.F, …d.sides.B, …d.sides.L, …d.sides.R];
+const all = [...d.top, ...d.sides.F, ...d.sides.B, ...d.sides.L, ...d.sides.R];
 const total = all.filter(v => v === “Y”).length;
 const edges = [
 [d.top[1], d.sides.B[1]],
@@ -351,8 +351,8 @@ const PLL_ALGS = [
 ];
 
 const ALL_ALGS = [
-…OLL_ALGS.map(a => ({ …a, type: “OLL” })),
-…PLL_ALGS.map(a => ({ …a, type: “PLL” })),
+...OLL_ALGS.map(a => ({ ...a, type: “OLL” })),
+...PLL_ALGS.map(a => ({ ...a, type: “PLL” })),
 ];
 
 const GROUP_COLORS = {
@@ -540,11 +540,11 @@ setQueue(pool.slice(0,5)); setQIdx(0); setRevealed(false); setView(“learn”);
 const startQuiz = () => {
 const pool = ALL_ALGS.filter(a=>(filter===“ALL”||a.type===filter)&&learned[a.id]);
 if (!pool.length) { showToast(“Learn some algorithms first!”, false); return; }
-setQuizPool([…pool].sort(()=>Math.random()-0.5));
+setQuizPool([...pool].sort(()=>Math.random()-0.5));
 setQuizIdx(0); setQuizRevealed(false); setQuizScore({correct:0,wrong:0}); setView(“quiz”);
 };
 const markLearned = (id) => {
-persist({…learned,[id]:true});
+persist({...learned,[id]:true});
 showToast(“Marked as learned ✓”);
 if (qIdx+1>=queue.length) setView(“done”);
 else { setQIdx(q=>q+1); setRevealed(false); }
@@ -554,7 +554,7 @@ if (qIdx+1>=queue.length) setView(“done”);
 else { setQIdx(q=>q+1); setRevealed(false); }
 };
 const quizAnswer = (correct) => {
-setQuizScore(s=>correct?{…s,correct:s.correct+1}:{…s,wrong:s.wrong+1});
+setQuizScore(s=>correct?{...s,correct:s.correct+1}:{...s,wrong:s.wrong+1});
 if (quizIdx+1>=quizPool.length) setView(“quizDone”);
 else { setQuizIdx(i=>i+1); setQuizRevealed(false); }
 };
@@ -579,7 +579,6 @@ const currentData = patternToData(currentPat);
 const validation = validatePattern(currentPat);
 const hasPattern = currentPat !== BLANK_PATTERN;
 
-```
 const toggleSticker = (idx) => {
   const arr = currentPat.split('');
   if (idx === 4) return; // center always yellow
@@ -663,7 +662,6 @@ return (
     </div>
   </div>
 );
-```
 
 }
 
@@ -675,13 +673,13 @@ return (
 <div style={S.root}>
 <Fonts />
 <div style={S.grid}/>
-{toast && <Toast {…toast}/>}
+{toast && <Toast {...toast}/>}
 <div style={S.wrap}>
 <NavBar onBack={()=>setView(“home”)} title=“Learn Mode”/>
 <div style={{textAlign:“center”,color:”#475569”,fontSize:“0.85rem”,marginBottom:“14px”}}>
 Algorithm {qIdx+1} of {queue.length}
 </div>
-<div style={{…S.card, maxWidth:“640px”, margin:“0 auto”}}>
+<div style={{...S.card, maxWidth:“640px”, margin:“0 auto”}}>
 <div style={{display:“flex”,gap:“20px”,alignItems:“flex-start”,marginBottom:“22px”,flexWrap:“wrap”}}>
 {/* Diagram */}
 <div style={{
@@ -704,7 +702,6 @@ border:“1px solid rgba(255,255,255,0.07)”,flexShrink:0,
 </div>
 </div>
 
-```
         <div style={{background:"rgba(0,0,0,0.25)",borderRadius:"12px",padding:"18px",marginBottom:"22px",border:"1px solid rgba(255,255,255,0.06)"}}>
           <div style={{color:"#475569",fontSize:"0.7rem",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"12px"}}>Algorithm</div>
           <AlgDisplay alg={alg.alg}/>
@@ -724,7 +721,6 @@ border:“1px solid rgba(255,255,255,0.07)”,flexShrink:0,
     </div>
   </div>
 );
-```
 
 }
 
@@ -749,7 +745,7 @@ return (
 <div style={{height:“6px”,borderRadius:“3px”,background:“rgba(255,255,255,0.07)”,overflow:“hidden”,marginBottom:“24px”}}>
 <div style={{height:“100%”,width:`${pct}%`,background:“linear-gradient(90deg,#a78bfa,#38bdf8)”,transition:“width 0.4s”}}/>
 </div>
-<div style={{…S.card,maxWidth:“640px”,margin:“0 auto”}}>
+<div style={{...S.card,maxWidth:“640px”,margin:“0 auto”}}>
 <div style={{display:“flex”,gap:“20px”,alignItems:“flex-start”,marginBottom:“22px”,flexWrap:“wrap”}}>
 <div style={{background:“rgba(0,0,0,0.3)”,borderRadius:“14px”,padding:“12px”,border:“1px solid rgba(255,255,255,0.07)”,flexShrink:0}}>
 <CubeDiagram alg={alg} size={120} ollPatterns={ollPatterns}/>
@@ -777,8 +773,8 @@ return (
 <AlgDisplay alg={alg.alg}/>
 </div>
 <div style={{display:“flex”,gap:“10px”,justifyContent:“center”}}>
-<button style={{…S.btn(”#22c55e”),flex:1}} onClick={()=>quizAnswer(true)}>✓ Knew it</button>
-<button style={{…S.btn(”#f43f5e”),flex:1}} onClick={()=>quizAnswer(false)}>✗ Missed it</button>
+<button style={{...S.btn(”#22c55e”),flex:1}} onClick={()=>quizAnswer(true)}>✓ Knew it</button>
+<button style={{...S.btn(”#f43f5e”),flex:1}} onClick={()=>quizAnswer(false)}>✗ Missed it</button>
 </div>
 </>
 )}
@@ -796,7 +792,7 @@ return (
 <div style={S.root}><Fonts/><div style={S.grid}/>
 <div style={S.wrap}>
 <NavBar onBack={()=>setView(“home”)} title=“Results”/>
-<div style={{…S.card,maxWidth:“420px”,margin:“0 auto”,textAlign:“center”}}>
+<div style={{...S.card,maxWidth:“420px”,margin:“0 auto”,textAlign:“center”}}>
 <div style={{fontSize:“3.5rem”,marginBottom:“14px”}}>{pct>=80?“🏆”:pct>=50?“💪”:“📚”}</div>
 <div style={{fontSize:“3rem”,fontWeight:900,background:“linear-gradient(135deg,#a78bfa,#38bdf8)”,WebkitBackgroundClip:“text”,WebkitTextFillColor:“transparent”}}>{pct}%</div>
 <div style={{color:”#94a3b8”,marginBottom:“24px”}}>{quizScore.correct} correct out of {total}</div>
@@ -816,7 +812,7 @@ return (
 <div style={S.root}><Fonts/><div style={S.grid}/>
 <div style={S.wrap}>
 <NavBar onBack={()=>setView(“home”)} title=“Session Done”/>
-<div style={{…S.card,maxWidth:“420px”,margin:“0 auto”,textAlign:“center”}}>
+<div style={{...S.card,maxWidth:“420px”,margin:“0 auto”,textAlign:“center”}}>
 <div style={{fontSize:“3rem”,marginBottom:“14px”}}>🔥</div>
 <div style={{fontSize:“1.5rem”,fontWeight:900,marginBottom:“8px”}}>Session Complete!</div>
 <div style={{color:”#94a3b8”,marginBottom:“24px”}}>Take a break, practise on your cube, then come back to quiz yourself.</div>
@@ -839,7 +835,7 @@ return (
 <div style={{display:“flex”,gap:“8px”,flexWrap:“wrap”,marginBottom:“16px”,alignItems:“center”}}>
 {[“ALL”,“OLL”,“PLL”,“LEARNED”].map(f=>(
 <button key={f} onClick={()=>setReviewFilter(f)} style={{
-…S.btn(reviewFilter===f?”#a78bfa”:”#475569”),
+...S.btn(reviewFilter===f?”#a78bfa”:”#475569”),
 background:reviewFilter===f?“rgba(167,139,250,0.18)”:“rgba(255,255,255,0.03)”,
 }}>{f===“LEARNED”?“✓ Learned”:f}</button>
 ))}
@@ -853,7 +849,7 @@ padding:“9px 14px”,color:”#e2e8f0”,fontFamily:”‘Syne’,sans-serif�
 <div style={{display:“flex”,flexDirection:“column”,gap:“8px”}}>
 {reviewAlgs.map(alg=>(
 <ReviewRow key={alg.id} alg={alg} learned={!!learned[alg.id]} ollPatterns={ollPatterns} onToggle={()=>{
-persist({…learned,[alg.id]:!learned[alg.id]});
+persist({...learned,[alg.id]:!learned[alg.id]});
 }} onEdit={alg.type===“OLL” ? ()=>{ setEditOllId(alg.id); setView(“editOll”); } : null}/>
 ))}
 </div>
@@ -866,14 +862,13 @@ persist({…learned,[alg.id]:!learned[alg.id]});
 // ── HOME ──
 return (
 <div style={S.root}><Fonts/><div style={S.grid}/>
-{toast&&<Toast {…toast}/>}
+{toast&&<Toast {...toast}/>}
 <div style={S.wrap}>
 <div style={{textAlign:“center”,marginBottom:“36px”}}>
 <div style={{fontSize:“clamp(1.8rem,5vw,3rem)”,fontWeight:900,letterSpacing:”-0.03em”,background:“linear-gradient(135deg,#fff 0%,#a78bfa 50%,#38bdf8 100%)”,WebkitBackgroundClip:“text”,WebkitTextFillColor:“transparent”,marginBottom:“6px”,lineHeight:1}}>⚡ CubeTrainer</div>
 <div style={{color:”#475569”,fontSize:“0.8rem”,letterSpacing:“0.12em”,textTransform:“uppercase”}}>OLL & PLL Mastery</div>
 </div>
 
-```
     <div style={{...S.card,marginBottom:"24px"}}>
       <div style={{display:"flex",justifyContent:"space-around",marginBottom:"18px",flexWrap:"wrap",gap:"12px"}}>
         <StatPill label="Total" value={`${learnedCount}/${ALL_ALGS.length}`} color="#a78bfa"/>
@@ -916,7 +911,6 @@ return (
     </div>
   </div>
 </div>
-```
 
 );
 }
@@ -933,9 +927,9 @@ return (
 <div style={{fontWeight:700,fontSize:“0.9rem”}}>{alg.name}</div>
 <div style={{color:”#475569”,fontSize:“0.75rem”,marginTop:“2px”,overflow:“hidden”,textOverflow:“ellipsis”,whiteSpace:“nowrap”}}>{alg.alg}</div>
 </div>
-{needsPattern && <span style={{…S.tag(”#fbbf24”),flexShrink:0}}>needs diagram</span>}
+{needsPattern && <span style={{...S.tag(”#fbbf24”),flexShrink:0}}>needs diagram</span>}
 <span style={{...S.tag(gc),flexShrink:0}}>{alg.group}</span>
-<span style={{…S.tag(”#38bdf8”),flexShrink:0}}>{alg.type}</span>
+<span style={{...S.tag(”#38bdf8”),flexShrink:0}}>{alg.type}</span>
 <span style={{color:”#374151”,fontSize:“0.75rem”,flexShrink:0}}>{open?“▲”:“▼”}</span>
 </div>
 {open&&(
