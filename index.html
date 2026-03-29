@@ -582,7 +582,7 @@ const hasPattern = currentPat !== BLANK_PATTERN;
 // Edge pairs: [topIdx, sideIdx]
 const edgePieces = [[1,13],[3,16],[5,19],[7,10]];
 // Corner triples: [topIdx, sideA, sideB] — rotate order is top→A→B→top
-const cornerPieces = [[0,12,15],[2,14,18],[6,9,17],[8,11,20]];
+const cornerPieces = [[0,15,12],[2,14,18],[6,9,17],[8,20,11]];
 const edgeMap = {};
 edgePieces.forEach(e => e.forEach(i => { edgeMap[i] = e; }));
 const cornerMap = {};
