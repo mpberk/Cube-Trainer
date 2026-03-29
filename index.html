@@ -33,7 +33,7 @@ const { useState, useEffect } = React;
 //   positions 18-20: R strip (back→front)
 // Center (position 4) is always yellow.
 
-const BLANK_PATTERN = "GGGGYGGGGGGGGGGGGGGGG";
+const BLANK_PATTERN = "YYYYYYYYYGGGGGGGGGGGG";
 
 function patternToData(pat) {
 const s = pat || BLANK_PATTERN;
@@ -579,11 +579,27 @@ const currentData = patternToData(currentPat);
 const validation = validatePattern(currentPat);
 const hasPattern = currentPat !== BLANK_PATTERN;
 
+// Edge pairs: [topIdx, sideIdx]
+const edgePieces = [[1,13],[3,16],[5,19],[7,10]];
+// Corner triples: [topIdx, sideA, sideB] — rotate order is top→A→B→top
+const cornerPieces = [[0,12,15],[2,14,18],[6,9,17],[8,11,20]];
+const edgeMap = {};
+edgePieces.forEach(e => e.forEach(i => { edgeMap[i] = e; }));
+const cornerMap = {};
+cornerPieces.forEach(c => c.forEach(i => { cornerMap[i] = c; }));
+
 const toggleSticker = (idx) => {
   const arr = currentPat.split('');
   if (idx === 4) return; // center always yellow
-  arr[idx] = arr[idx] === "Y" ? "G" : "Y";
-  arr[4] = "Y"; // ensure center stays yellow
+  if (edgeMap[idx]) {
+    // Flip edge: swap Y between the two stickers
+    const [a, b] = edgeMap[idx];
+    const tmp = arr[a]; arr[a] = arr[b]; arr[b] = tmp;
+  } else if (cornerMap[idx]) {
+    // Rotate corner clockwise: Y moves to next position in cycle
+    const [a, b, c] = cornerMap[idx];
+    const tmp = arr[c]; arr[c] = arr[b]; arr[b] = arr[a]; arr[a] = tmp;
+  }
   const newPat = arr.join('');
   persistPatterns({ ...ollPatterns, [editOllId]: newPat });
 };
@@ -612,7 +628,7 @@ return (
         </div>
 
         <div style={{textAlign:"center",color:"#64748b",fontSize:"0.78rem",marginBottom:"12px",letterSpacing:"0.04em"}}>
-          Click stickers to toggle yellow / gray
+          Tap edges to flip, corners to rotate
         </div>
 
         <div style={{display:"flex",justifyContent:"center",marginBottom:"20px"}}>
